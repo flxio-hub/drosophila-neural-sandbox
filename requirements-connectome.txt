@@ -1,0 +1,4 @@
+# Dipendenze opzionali per scaricare connettività reale in tempo reale
+caveclient>=7.0        # FlyWire (CAVE): richiede un token personale
+neuprint-python>=0.5   # Hemibrain / MANC (neuPrint): richiede un token personale
+navis>=1.8             # analisi e visualizzazione morfologie, re-esporta neuprint

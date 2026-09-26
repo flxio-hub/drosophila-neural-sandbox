@@ -1,0 +1,9 @@
+[project]
+name = "drosophila-neural-sandbox"
+version = "1.0.0"
+description = "Sandbox interattiva per simulare circuiti neuronali di Drosophila melanogaster"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,7 @@
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+plotly>=5.20
+streamlit>=1.50
+numba>=0.60      # opzionale ma consigliato: motore JIT ~20–150× più veloce (senza, si usa NumPy)
+pytest>=8.0
