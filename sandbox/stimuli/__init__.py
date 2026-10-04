@@ -4,7 +4,7 @@ from .builder import (CONDUCTANCE_KINDS, CURRENT_KINDS, DEFAULTS, KINDS, RECEPTO
                       with_defaults)
 from .conductance import OPSINS, light_pulses, opsin_conductance, poisson_conductance
 from .expression import HELP_TEXT, ExpressionError, evaluate_expression
-from .sensory import MODALITIES, PROFILES, TransductionParams, transduce
+from .sensory import MODALITIES, PROFILES, TransductionParams, Transducer, transduce
 from .waveforms import (CHIRP_METHODS, PERIODIC_SHAPES, chirp, from_samples, gaussian_noise, moving_bar, periodic,
                         ramp, sine, square_pulse, staircase, time_vector)
 
@@ -13,7 +13,7 @@ __all__ = [
     "with_defaults",
     "OPSINS", "light_pulses", "opsin_conductance", "poisson_conductance",
     "HELP_TEXT", "ExpressionError", "evaluate_expression",
-    "MODALITIES", "PROFILES", "TransductionParams", "transduce",
+    "MODALITIES", "PROFILES", "TransductionParams", "Transducer", "transduce",
     "CHIRP_METHODS", "PERIODIC_SHAPES", "chirp", "from_samples", "gaussian_noise", "moving_bar", "periodic",
     "ramp", "sine", "square_pulse", "staircase", "time_vector",
 ]

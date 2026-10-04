@@ -13,7 +13,8 @@ Le rampe ordinali (5 gradini) e sequenziali sono validate separatamente per i du
 
 from dataclasses import dataclass
 
-FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+# "Source Sans" è il carattere dell'interfaccia di Streamlit: i grafici usano lo stesso, se disponibile
+FONT_FAMILY = '"Source Sans", "Source Sans Pro", system-ui, -apple-system, "Segoe UI", sans-serif'
 MAX_SERIES = 8
 
 

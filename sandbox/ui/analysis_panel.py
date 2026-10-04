@@ -9,10 +9,9 @@ from ..viz import MAX_SERIES, Theme, neuron_colors
 from ..viz.analysis_plots import (ccg_figure, conductance_figure, isi_figure, psd_figure, rate_lines_figure,
                                   sta_figure, voltage_overlay_figure)
 from . import state
-
-
-def _chart(fig):
-    st.plotly_chart(fig, theme=None, config={"displaylogo": False})
+from .look import chart as _chart
+from .look import explain
+from .texts import TIPS
 
 
 def analysis_panel(result: SimulationResult, control: SimulationResult | None, sig: str, theme: Theme) -> None:
@@ -20,6 +19,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
     p = f"{sig}_an"
 
     st.subheader("Conduttanze e correnti sinaptiche")
+    explain("an_conductance")
     st.caption("Chi spinge e chi frena un neurone: g eccitatoria (rosso), inibitoria (blu) e degli stimoli a "
                "conduttanza (acqua). Le correnti sono positive quando depolarizzano.")
     name = state.select("Neurone", f"{p}_cond", neurons)
@@ -31,10 +31,11 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
     c2.metric("Carica inibitoria", f"{i_inh[:, j].sum() * result.dt / 1000:.2f} pC")
     total = abs(i_exc[:, j].sum()) + abs(i_inh[:, j].sum())
     c3.metric("Quota eccitatoria", f"{100 * abs(i_exc[:, j].sum()) / total:.0f}%" if total else "—",
-              help="|Q_exc| / (|Q_exc| + |Q_inh|): bilancio eccitazione/inibizione ricevuto.")
+              help=TIPS["metric_exc_share"])
 
     st.divider()
     st.subheader("Frequenza istantanea")
+    explain("an_rate")
     c1, c2 = st.columns([0.7, 0.3])
     default = [n for n in neurons if result.spike_times[neurons.index(n)].size][:4] or neurons[:1]
     chosen = state.multi("Neuroni (max 8)", f"{p}_rate_neurons", neurons, default, where=c1,
@@ -48,6 +49,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
     col_isi, col_ccg = st.columns(2, gap="large")
     with col_isi:
         st.subheader("Intervalli inter-spike")
+        explain("an_isi")
         name = state.select("Neurone", f"{p}_isi", neurons, default[0])
         spikes = result.spike_times[neurons.index(name)]
         bin_ms = state.slider("Bin (ms)", f"{p}_isi_bin", 0.5, 20.0, 2.0, 0.5)
@@ -61,6 +63,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
             st.info("Servono almeno 2 spike.")
     with col_ccg:
         st.subheader("Cross-correlogramma")
+        explain("an_ccg")
         c1, c2 = st.columns(2)
         ref = state.select("Riferimento", f"{p}_ccg_a", neurons, default[0], where=c1)
         target = state.select("Bersaglio", f"{p}_ccg_b", neurons, default[min(1, len(default) - 1)], where=c2)
@@ -75,6 +78,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
     col_sta, col_psd = st.columns(2, gap="large")
     with col_sta:
         st.subheader("Spike-triggered average")
+        explain("an_sta")
         c1, c2 = st.columns(2)
         name = state.select("Neurone", f"{p}_sta", neurons, default[0], where=c1)
         source = state.select("Segnale", f"{p}_sta_src", ["Corrente iniettata", "Corrente sinaptica (E + I)",
@@ -93,6 +97,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
             st.info("Nessuno spike utilizzabile: servono spike dopo la finestra iniziale.")
     with col_psd:
         st.subheader("Spettro di potenza")
+        explain("an_psd")
         options = ["Attività di popolazione"] + neurons
         target = state.select("Segnale", f"{p}_psd", options)
         if target == "Attività di popolazione":
@@ -110,6 +115,7 @@ def analysis_panel(result: SimulationResult, control: SimulationResult | None, s
 
     st.divider()
     st.subheader("Confronto con il controllo")
+    explain("an_control")
     if control is None or control.neurons != neurons:
         st.info("Nessun controllo per questo circuito: nella scheda Simulazione premi **📌 Usa come controllo**, "
                 "poi cambia parametri, stimoli o manipolazioni.")

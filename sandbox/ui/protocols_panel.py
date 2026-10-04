@@ -12,23 +12,10 @@ from ..viz import MAX_SERIES, Theme, neuron_colors
 from ..viz.protocol_plots import (fi_figure, impedance_figure, iv_figure, ppr_figure, sweep_heatmap_figure,
                                   sweep_lines_figure, traces_figure, train_figure, trials_figure, vclamp_figure)
 from . import state
+from .look import chart as _chart
+from .look import explain
+from .texts import PROTOCOL_EXPLAIN, PROTOCOLS, TIPS
 
-PROTOCOLS = {
-    "Curva f-I": "Gradini di corrente di ampiezza crescente su un neurone isolato con i parametri del modello "
-                 "scelto: reobase, guadagno, adattamento.",
-    "Esplorazione parametrica": "Ripete l'esperimento corrente variando uno o due parametri e misura la risposta "
-                                "di ogni neurone.",
-    "Trial ripetuti": "Stesso esperimento con semi casuali diversi: variabilità fra trial, fattore di Fano e "
-                      "affidabilità temporale degli spike.",
-    "Paired-pulse (STP)": "Due spike presinaptici a intervalli crescenti e un treno regolare: depressione e "
-                          "facilitazione a breve termine.",
-    "Impedenza (ZAP)": "Corrente chirp sottosoglia: |Z(f)| e risonanza della membrana.",
-    "Voltage clamp (HH)": "L'esperimento di Hodgkin e Huxley: gradini di potenziale imposto e correnti di Na⁺ e K⁺.",
-}
-
-
-def _chart(fig):
-    st.plotly_chart(fig, theme=None, config={"displaylogo": False})
 
 
 def _store(name: str, value) -> None:
@@ -90,7 +77,7 @@ def _fi(exp: Experiment, theme: Theme) -> None:
     slope = (np.polyfit(firing["Corrente (pA)"], firing["Frequenza a regime (Hz)"], 1)[0]
              if len(firing) >= 2 else None)
     m3.metric("Pendenza f-I", f"{slope:.2f} Hz/pA" if slope is not None else "—",
-              help="Guadagno a regime sopra la reobase (regressione lineare).")
+              help=TIPS["metric_fi_slope"])
     _chart(fi_figure(curve.table, theme, theory))
     with st.expander("Tracciati d'esempio"):
         _chart(traces_figure(curve.t, curve.examples, theme, curve.window))
@@ -155,9 +142,7 @@ def _trials(exp: Experiment, theme: Theme) -> None:
                    "Aggiungi rumore di membrana di fondo nella barra laterale o uno stimolo stocastico.")
     c1, c2 = st.columns(2)
     n_trials = state.slider("Numero di trial", "proto_tr_n", 2, 60, 20, where=c1)
-    frozen = state.check("Stimolo congelato (\"frozen noise\")", "proto_tr_frozen", False, where=c2,
-                         help="Gli stimoli casuali restano identici fra i trial; cambia solo il rumore di fondo. "
-                              "Paradigma di Mainen & Sejnowski (1995).")
+    frozen = state.check("Stimolo congelato (\"frozen noise\")", "proto_tr_frozen", False, where=c2)
     if st.button("▶ Esegui i trial", type="primary", key="proto_tr_run"):
         bar = st.progress(0.0, text="Trial in corso…")
         result = repeated_trials(exp, n_trials, frozen,
@@ -223,8 +208,7 @@ def _impedance(exp: Experiment, theme: Theme) -> None:
     f0 = state.number("f iniziale (Hz)", "proto_z_f0", 0.1, 50.0, 0.5, 0.1, where=c2)
     f1 = state.number("f finale (Hz)", "proto_z_f1", 5.0, 500.0, 150.0, 5.0, where=c3)
     duration = state.number("Durata (ms)", "proto_z_T", 500.0, 20_000.0, 4000.0, 500.0, where=c4)
-    bias = state.number("Polarizzazione (pA)", "proto_z_bias", -200.0, 500.0, 0.0, 1.0, where=c5,
-                        help="Corrente continua che sposta il potenziale di riposo: la risonanza dipende da V.")
+    bias = state.number("Polarizzazione (pA)", "proto_z_bias", -200.0, 500.0, 0.0, 1.0, where=c5)
     if st.button("▶ Misura l'impedenza", type="primary", key="proto_z_run"):
         dt = exp.sim.dt if exp.model == "lif" else min(exp.sim.dt, 0.025)
         with st.spinner("Simulo il chirp…"):
@@ -239,8 +223,7 @@ def _impedance(exp: Experiment, theme: Theme) -> None:
                    "l'impedenza vale solo sottosoglia.")
     m1, m2, m3 = st.columns(3)
     m1.metric("Frequenza di risonanza", f"{profile.resonance_hz:.1f} Hz")
-    m2.metric("Fattore Q", f"{profile.q_factor:.2f}", help="|Z| al picco / |Z| alla frequenza più bassa; "
-                                                           "Q ≈ 1: nessuna risonanza (filtro passa-basso).")
+    m2.metric("Fattore Q", f"{profile.q_factor:.2f}", help=TIPS["metric_q"])
     m3.metric("|Z| a bassa frequenza", f"{profile.magnitude[0]:.2f} GΩ")
     theory = None
     if model == "lif":
@@ -281,6 +264,7 @@ def _voltage_clamp(exp: Experiment, theme: Theme) -> None:
 def protocols_panel(exp: Experiment, theme: Theme, sig: str) -> None:
     choice = state.radio("Protocollo", "proto_choice", list(PROTOCOLS), horizontal=True)
     st.caption(PROTOCOLS[choice])
+    explain(PROTOCOL_EXPLAIN[choice])
     st.divider()
     {"Curva f-I": lambda: _fi(exp, theme),
      "Esplorazione parametrica": lambda: _sweep(exp, theme, sig),

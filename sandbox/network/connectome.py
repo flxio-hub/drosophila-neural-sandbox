@@ -32,6 +32,9 @@ NT_SIGN = {
     "da": 1.0, "dopamine": 1.0,
     "ser": 1.0, "serotonin": 1.0,
     "oct": 1.0, "octopamine": 1.0,
+    "tyr": 1.0, "tyramine": 1.0,
+    # l'istamina apre canali al cloro (HisCl, es. fotorecettori → neuroni laminari): inibitoria
+    "his": -1.0, "histamine": -1.0,
 }
 
 _PRE_COLUMNS = ("pre", "pre_root_id", "pre_pt_root_id", "bodyId_pre", "source", "pre_id")

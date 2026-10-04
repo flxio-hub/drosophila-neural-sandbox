@@ -4,37 +4,22 @@ Le chiavi dei widget includono il tipo di stimolo: cambiando tipo non si eredita
 valori pensati per un altro stimolo (es. un'ampiezza in pA dentro un'intensità luminosa).
 """
 
-import io
-
-import numpy as np
-import pandas as pd
 import streamlit as st
 
+from ..data import store
 from ..stimuli import (CONDUCTANCE_KINDS, HELP_TEXT, KINDS, MODALITIES, OPSINS, PROFILES, RECEPTORS, ExpressionError,
                        evaluate_expression, time_vector, with_defaults)
 from ..stimuli.waveforms import CHIRP_METHODS, PERIODIC_SHAPES
 from . import state
+from .look import explain
+from .texts import KIND_HELP, TIPS
+
+UPLOAD = "📤 Carica un file…"
 
 KIND_CODES = {
     "Onda quadra": "sq", "Rampa": "rp", "Scala di gradini": "st", "Onda periodica": "pe", "Chirp (ZAP)": "ch",
     "Rumore gaussiano": "no", "Barra in movimento": "mb", "Equazione custom": "eq", "Da file CSV": "csv",
     "Sensoriale": "se", "Input sinaptico di Poisson": "po", "Optogenetica": "op",
-}
-KIND_HELP = {
-    "Onda quadra": "Gradino di corrente o treno di impulsi a frequenza fissa.",
-    "Rampa": "Corrente che cresce linearmente: misura la soglia dinamica e l'accomodazione.",
-    "Scala di gradini": "Gradini crescenti in un'unica registrazione: la curva f-I \"a occhio\".",
-    "Onda periodica": "Sinusoide, triangolare, dente di sega o quadra.",
-    "Chirp (ZAP)": "Frequenza crescente nel tempo: rivela filtri e risonanze della membrana.",
-    "Rumore gaussiano": "Bianco o correlato (Ornstein-Uhlenbeck); utile per la spike-triggered average.",
-    "Barra in movimento": "Impulsi in sequenza sui bersagli nell'ordine scelto: simula un oggetto che attraversa "
-                          "colonne visive adiacenti.",
-    "Equazione custom": "Qualsiasi funzione di t, valutata in modo sicuro.",
-    "Da file CSV": "Riproduce una forma d'onda registrata (colonne: tempo in ms, valore in pA).",
-    "Sensoriale": "Stimolo fisico (luce, odore, looming) trasdotto in corrente dal recettore.",
-    "Input sinaptico di Poisson": "Bombardamento sinaptico di fondo come conduttanza: cambia anche la resistenza "
-                                  "di membrana (shunting).",
-    "Optogenetica": "Luce su un'opsina espressa nei bersagli: CsChrimson attiva, GtACR1 inibisce.",
 }
 MODALITY_CODES = {name: code for name, code in zip(MODALITIES, ("ph", "orn", "loom"))}
 OPSIN_CODES = {name: code for name, code in zip(OPSINS, ("csc", "gta"))}
@@ -120,19 +105,16 @@ def _noise(p, d, duration, neurons):
         "mean": state.slider("Media (pA)", f"{p}_mu", -50.0, 200.0, float(d["mean"]), 1.0, where=c1),
         "sigma": state.slider("Deviazione standard σ (pA)", f"{p}_sd", 0.0, 100.0, float(d["sigma"]), 0.5, where=c2),
         "tau_corr": state.slider("Tempo di correlazione τ (ms, 0 = bianco)", f"{p}_tau", 0.0, 50.0,
-                                 float(d["tau_corr"]), 0.5,
-                                 help="τ > 0: processo di Ornstein-Uhlenbeck, statistica indipendente da dt."),
+                                 float(d["tau_corr"]), 0.5),
     }
     params.update(_times(p, d, duration))
     params["independent"] = state.check("Realizzazione indipendente per ogni neurone", f"{p}_indep",
-                                        bool(d["independent"]),
-                                        help="Disattiva per dare a tutti i bersagli lo stesso rumore (input correlato).")
+                                        bool(d["independent"]))
     return params
 
 
 def _moving_bar(p, d, duration, neurons):
-    direction = state.radio("Direzione", f"{p}_dir", ["→", "←"], d["direction"], horizontal=True,
-                            help="→ percorre i bersagli nell'ordine in cui li hai selezionati, ← al contrario.")
+    direction = state.radio("Direzione", f"{p}_dir", ["→", "←"], d["direction"], horizontal=True)
     c1, c2 = st.columns(2)
     params = {
         "direction": direction,
@@ -140,7 +122,7 @@ def _moving_bar(p, d, duration, neurons):
         "pulse_ms": state.number("Durata su ogni posizione (ms)", f"{p}_pulse", 1.0, 1000.0, float(d["pulse_ms"]),
                                  1.0, where=c2),
         "interval_ms": state.number("Intervallo fra posizioni (ms)", f"{p}_int", 0.5, 1000.0, float(d["interval_ms"]),
-                                    0.5, where=c1, help="Velocità = 1 posizione ogni intervallo."),
+                                    0.5, where=c1),
         "t_on": state.number("Inizio (ms)", f"{p}_ton", 0.0, None, float(d["t_on"]), 10.0, where=c2),
         "repeats": state.number("Passaggi", f"{p}_rep", 1, 50, int(d["repeats"]), where=c1),
         "repeat_ms": state.number("Periodo fra passaggi (ms)", f"{p}_repms", 1.0, 5000.0, float(d["repeat_ms"]),
@@ -160,18 +142,28 @@ def _expression(p, d, duration, neurons):
 
 
 def _csv(p, d, duration, neurons):
-    upload = st.file_uploader("Forma d'onda (.csv: tempo in ms, valore in pA)", type=["csv", "txt"],
-                              key=state.key(f"{p}_file"))
-    samples = state.default(f"{p}_samples", None)
-    if upload is not None:
+    """Forma d'onda da file: caricata qui o scelta dalla libreria (pagina Dati). I campioni finiscono comunque
+    nella specifica, così l'esperimento esportato in JSON resta autosufficiente."""
+    memo = state.key(f"_samples:{p}")  # sopravvive al cambio di pagina (non all'importazione di un esperimento)
+    samples = st.session_state.get(memo) or state.default(f"{p}_samples", None)
+    choice = state.select("Forma d'onda", f"{p}_lib", [UPLOAD, *store.list_stimuli()])
+    if choice == UPLOAD:
+        upload = st.file_uploader("File .csv (tempo in ms, valore in pA)", type=["csv", "txt"],
+                                  key=state.key(f"{p}_file"), help=TIPS["upload_waveform"])
+        if upload is not None:
+            try:
+                t, v = store.parse_waveform(upload.getvalue())
+                samples = {"t": t, "v": v, "source": upload.name}
+                if st.button("💾 Salva nella libreria", key=state.key(f"{p}_save"), help=TIPS["save_to_library"]):
+                    st.toast(f"Salvato nella libreria come «{store.save_stimulus(upload.name, upload.getvalue())}».")
+            except Exception as exc:
+                st.error(f"CSV non leggibile: {exc}")
+    else:
         try:
-            table = pd.read_csv(io.BytesIO(upload.getvalue()), sep=None, engine="python")
-            numeric = table.select_dtypes("number")
-            if numeric.shape[1] < 2:
-                raise ValueError("servono due colonne numeriche")
-            samples = {"t": numeric.iloc[:, 0].tolist(), "v": numeric.iloc[:, 1].tolist(), "source": upload.name}
+            samples = store.load_stimulus(choice)
         except Exception as exc:
-            st.error(f"CSV non leggibile: {exc}")
+            st.error(f"Stimolo «{choice}» non leggibile: {exc}")
+    st.session_state[memo] = samples
     if samples:
         state.record(f"{p}_samples", samples)
         st.caption(f"{samples.get('source', 'dati importati')}: {len(samples['t'])} campioni tra "
@@ -218,8 +210,7 @@ def _sensory(p, d, duration, neurons):
         c1, c2 = st.columns(2)
         params["t_collision"] = state.number("Istante di collisione (ms)", f"{q}_tc", 0.0, None,
                                              float(d["t_collision"]), 10.0, where=c1)
-        params["l_over_v"] = state.slider("l/v (ms)", f"{q}_lv", 5.0, 120.0, float(d["l_over_v"]), 1.0, where=c2,
-                                          help="Semi-dimensione / velocità dell'oggetto: più piccolo = più rapido.")
+        params["l_over_v"] = state.slider("l/v (ms)", f"{q}_lv", 5.0, 120.0, float(d["l_over_v"]), 1.0, where=c2)
     base = info["params"] if d["modality"] != modality else None
     t = {name: (getattr(base, name) if base is not None else d[name])
          for name in ("half_sat", "hill_n", "gain_pA", "tau_fast", "tau_slow", "adaptation")}
@@ -241,8 +232,7 @@ def _poisson(p, d, duration, neurons):
     c1, c2, c3 = st.columns(3)
     params = {
         "receptor": receptor,
-        "rate": state.number("Frequenza totale (Hz)", f"{p}_rate", 1.0, 5000.0, float(d["rate"]), 10.0, where=c1,
-                             help="Somma delle frequenze di tutti gli ingressi non modellati (es. 100 × 2 Hz)."),
+        "rate": state.number("Frequenza totale (Hz)", f"{p}_rate", 1.0, 5000.0, float(d["rate"]), 10.0, where=c1),
         "g_peak": state.number("g per evento (nS)", f"{p}_g", 0.01, 20.0, float(d["g_peak"]), 0.05, where=c2),
         "tau": state.number("τ (ms)", f"{p}_tau", 0.5, 100.0, float(d["tau"]), 0.5, where=c3),
     }
@@ -296,11 +286,11 @@ def channel_ui(k: int, prefix: str, neurons: list[str], default: dict, duration:
 def stimulus_panel(neurons: list[str], sig: str, defaults: list[dict], duration: float,
                    model: str) -> tuple[list[dict], float]:
     """Tutti i canali di stimolo. Restituisce (specifiche, guadagno globale delle correnti)."""
+    explain("stimuli")
     c1, c2 = st.columns(2)
     n_channels = state.number("Canali di stimolo", f"{sig}_nch", 0, 8, len(defaults), where=c1)
     gain = state.number("Guadagno correnti (×)", f"gain_{model}", 0.0, 20.0, 1.0 if model == "lif" else 3.0, 0.1,
-                        where=c2, help="Scala gli stimoli in corrente (non le conduttanze). Con Hodgkin-Huxley la "
-                                       "reobase è ~4× più alta del LIF.")
+                        where=c2)
     specs = []
     for k in range(int(n_channels)):
         default = defaults[k] if k < len(defaults) else {"kind": "Onda quadra", "targets": neurons[:1]}

@@ -19,6 +19,13 @@ protocolli elettrofisiologici automatici e analisi, con risposta in tempo reale.
   spike-triggered average, spettro di potenza, confronto con un controllo
 - **Circuiti**: cascata, lobo antennale, Giant Fiber (sinapsi miste), CPG half-center, rete E/I,
   corpo fungo (codifica sparsa), selettività di direzione T4, connettomi reali (FlyWire, Hemibrain)
+- **Dati dal browser** (pagina Dati): tabelle di FlyWire Codex anche da centinaia di MB (FAFB, Male CNS;
+  CSV, CSV.gz, Feather, Parquet), convertite una volta in Parquet in una cartella esterna al codice;
+  esploratore del connettoma (classe, superclasse, tipo cellulare, neuropilo, trasmettitore) con
+  **"Crea sottocircuito"** verso la Sandbox; libreria di stimoli personalizzati
+- **Spiegazioni integrate**: ogni controllo ha un tooltip (cos'è · unità · valore tipico nella mosca), ogni
+  grafico e protocollo un riquadro **Cosa sto guardando?** con un esempio di interpretazione; tutti i
+  testi sono in un unico file (`sandbox/ui/texts.py`)
 - **Esperimenti riproducibili**: salvataggio e caricamento in JSON, leggibili anche da Python
 - **Motore**: backend NumPy di riferimento + backend **Numba JIT** (20–150× più veloce), verificati l'uno contro l'altro
 
@@ -28,7 +35,8 @@ protocolli elettrofisiologici automatici e analisi, con risposta in tempo reale.
 
 ```
 drosophila_sandbox/
-├── app.py                        # Entry point Streamlit: layout e orchestrazione
+├── app.py                        # Entry point Streamlit: navigazione fra le pagine Sandbox e Dati
+├── .streamlit/config.toml        # Tema chiaro/scuro (palette di viz/theme.py), limite di upload 2 GB
 ├── requirements.txt              # Dipendenze principali (numba consigliato)
 ├── requirements-connectome.txt   # Opzionali: caveclient, neuprint-python, navis
 ├── pyproject.toml                # Metadati + configurazione pytest
@@ -49,17 +57,24 @@ drosophila_sandbox/
 │   │   ├── lif.py                # LIF adattivo (Eulero esponenziale, spikelet elettrici)
 │   │   ├── hodgkin_huxley.py     # HH con gate Rush–Larsen tabulati
 │   │   └── synapses.py           # Sinapsi a conduttanza, ritardo, STP, guadagno di rilascio
+│   ├── data/
+│   │   ├── store.py              # Cartella dati esterna, conversione a blocchi in Parquet, libreria stimoli
+│   │   └── codex.py              # Esploratore del connettoma: tabelle Codex/neuPrint, filtri, sottocircuiti
 │   ├── network/
 │   │   ├── topologies.py         # Circuiti preimpostati (Circuit: W chimica + gap)
 │   │   └── connectome.py         # CSV / FlyWire (CAVEclient) / Hemibrain (neuPrint) → W
 │   ├── simulation/
-│   │   ├── engine.py             # simulate(): dispatch NumPy ↔ Numba
+│   │   ├── engine.py             # simulate() e Stepper (a blocchi, per l'anello chiuso; set_weights per la plasticità): NumPy ↔ Numba
 │   │   ├── fast.py               # Kernel Numba JIT (stessi schemi numerici)
 │   │   ├── drive.py              # Correnti, conduttanze esterne, guadagno di rilascio
 │   │   └── analysis.py           # Frequenze, ISI, CCG, STA, spettri, Fano, affidabilità
 │   ├── viz/                      # Tema validato per daltonismo (chiaro/scuro) e grafici Plotly
-│   └── ui/                       # Pannelli Streamlit (stato dei widget, stimoli, protocolli…)
-└── tests/                        # 139 test: fisiologia, analisi, protocolli, backend, interfaccia
+│   └── ui/
+│       ├── pages/                # simulation.py (Sandbox) e data.py (Dati)
+│       ├── texts.py              # TUTTI i testi: tooltip, "Cosa sto guardando?", benvenuto, guida
+│       ├── look.py               # Stile, riquadri esplicativi, schermata di benvenuto
+│       └── …                     # Pannelli (stato dei widget, stimoli, manipolazioni, protocolli…)
+└── tests/                        # 189 test: fisiologia, analisi, protocolli, backend, dati, interfaccia
 ```
 
 La libreria `sandbox/` non dipende da Streamlit (tranne `ui/`): si usa anche da notebook o script.
@@ -125,18 +140,71 @@ pip install -r requirements-connectome.txt
 
 ## 3. Come è organizzata l'interfaccia
 
-| Scheda | Contenuto |
+L'app ha due pagine (navigazione in alto): **Sandbox**, dove si simula, e **Dati**, dove si gestiscono
+connettoma e stimoli personali. Al primo avvio un pannello di benvenuto spiega in 30 secondi cosa si può fare
+(si chiude con *Ho capito* e si riapre con *Introduzione*). Ogni controllo ha un'icona ⓘ con cosa
+rappresenta, unità e valore tipico nella mosca; sotto grafici, pannelli e protocolli c'è il riquadro
+**Cosa sto guardando?**. Per correggere un testo basta modificare `sandbox/ui/texts.py`
+(un test verifica che nessun controllo resti senza spiegazione).
+
+| Scheda della Sandbox | Contenuto |
 |---|---|
-| **🔬 Simulazione** | Stimoli, manipolazioni ed editor delle matrici a sinistra; a destra ① protocollo di stimolo (luce/odore, correnti, conduttanze, temperatura in pannelli separati), ② V(t), ③ raster + PSTH, ④ heatmap di W e gap junction con frequenze (e confronto con il controllo). |
-| **📈 Analisi** | Conduttanze e correnti sinaptiche di un neurone, frequenza istantanea, ISI, cross-correlogramma, spike-triggered average, spettro di potenza, confronto dei tracciati con il controllo. |
-| **🧪 Protocolli** | Esperimenti automatici sull'esperimento corrente, con tabelle esportabili in CSV. |
-| **📖 Guida** | Equazioni, unità, esperimenti suggeriti. |
+| **Simulazione** | Stimoli, manipolazioni ed editor delle matrici a sinistra; a destra ① protocollo di stimolo (luce/odore, correnti, conduttanze, temperatura in pannelli separati), ② V(t), ③ raster + PSTH, ④ heatmap di W e gap junction con frequenze (e confronto con il controllo). |
+| **Analisi** | Conduttanze e correnti sinaptiche di un neurone, frequenza istantanea, ISI, cross-correlogramma, spike-triggered average, spettro di potenza, confronto dei tracciati con il controllo. |
+| **Protocolli** | Esperimenti automatici sull'esperimento corrente, con tabelle esportabili in CSV. |
+| **Guida** | Equazioni, unità, esperimenti suggeriti. |
 
 Nella barra laterale: circuito, modello, sinapsi (con STP), simulazione (con rumore di fondo) e
-**💾 Salva / carica esperimento**: il file JSON contiene circuito, parametri, stimoli, manipolazioni,
+**Salva / carica esperimento**: il file JSON contiene circuito, parametri, stimoli, manipolazioni,
 stato di tutti i controlli e il riepilogo dei risultati; ricaricandolo l'app torna esattamente
-allo stesso esperimento. **📌 Usa come controllo** salva il risultato corrente per confrontarlo con le
+allo stesso esperimento. **Usa come controllo** salva il risultato corrente per confrontarlo con le
 condizioni successive (barre grigie nelle frequenze, tracciati sovrapposti nella scheda Analisi).
+
+### Pagina Dati
+
+I dati dell'utente stanno fuori dal codice, in `~/drosophila_data/` (su Windows
+`C:\Users\<nome utente>\drosophila_data`), oppure nella cartella indicata dalla variabile d'ambiente
+`DROSOPHILA_DATA`:
+
+```
+drosophila_data/
+├── connectome/   # tabelle del connettoma convertite in Parquet (una per file caricato)
+└── stimuli/      # forme d'onda CSV della libreria (tempo in ms, valore in pA)
+```
+
+| Scheda | Contenuto |
+|---|---|
+| **Tabelle del connettoma** | Caricamento dal browser (fino a 2 GB, `.streamlit/config.toml`) o **da un percorso sul disco** (consigliato per i file più grandi: non passa dal browser e non occupa RAM). CSV, CSV.gz, TSV, Feather/Arrow e Parquet vengono convertiti **una sola volta** in Parquet leggendoli a blocchi; il CSV caricato non viene conservato. Elenco con tipo riconosciuto, anteprima delle prime righe, eliminazione con conferma. |
+| **Esploratore del connettoma** | Filtri a cascata per superclasse, classe, sottoclasse, tipo cellulare, trasmettitore, lato e flusso, ricerca per nome/tipo/ID e filtro per neuropilo (sinapsi minime nei neuropili scelti). Metriche e grafici della selezione, tabella dei neuroni più connessi con selezione delle righe. **Crea sottocircuito** porta fino a 150 neuroni nella Sandbox (preset *Sottocircuito dal connettoma*). |
+| **Libreria di stimoli** | Forme d'onda salvate, con anteprima: compaiono nel menu *Forma d'onda* di ogni canale di tipo *Da file CSV*. Anche dal canale stesso si può salvare nella libreria un file appena caricato. |
+
+**Quali file di FlyWire Codex** (codex.flywire.ai → Download, dataset FAFB o Male CNS): servono una tabella
+di **archi** (es. `connections`: `pre_root_id, post_root_id, neuropil, syn_count, nt_type`) e almeno una di
+**neuroni** (es. `classification`: `root_id, super_class, class, sub_class, cell_type…`); altre tabelle per
+neurone (nomi, trasmettitori, tipi consolidati) vengono unite per ID. Il tipo di tabella si riconosce
+**dalle colonne**, non dal nome del file, e sono accettati anche gli schemi di neuPrint e dei file Feather
+del Male CNS di Janelia (`body_pre, body_post, weight`; `bodyId, type, superclass, predictedNt…`).
+
+Per **FAFB v783** bastano `connections_princeton` (archi con soglia ≥ 5 sinapsi, 5,3 milioni di righe),
+`classification`, `consolidated_cell_types` (il tipo cellulare: in v783 non è in `classification`), `neurons`
+(trasmettitore) e `names`; `visual_neuron_types` aggiunge i tipi del lobo ottico. Le versioni
+`…_no_threshold` (22 milioni di righe) includono anche le connessioni con 1–4 sinapsi. Non servono le tabelle
+di singole sinapsi (`synapse_coordinates`, `fafb_v783_princeton_synapse_table`, file da molti GB), che
+l'app riconosce come tipo **sinapsi** e non usa, né `coordinates`, `labels`, `cell_stats`,
+`neuropil_synapse_table`: i neuropili si ricavano dagli archi.
+
+Nel sottocircuito |W| = numero di sinapsi × *nS per sinapsi* (sommando i neuropili) e il segno segue il
+trasmettitore del neurone presinaptico: ACh eccitatoria; GABA, glutammato e istamina inibitori; dopamina,
+serotonina, octopamina e tiramina trattati come eccitatori deboli (sono neuromodulatori). I neuroni senza
+connessioni sopra soglia con gli altri vengono scartati (con avviso). Le sorgenti (neuroni senza input nel
+sottocircuito) ricevono uno stimolo di default.
+
+Prestazioni misurate su questo PC (8 GB di RAM) con i file reali di FAFB v783: conversione di
+`connections_princeton.csv.gz` (68 MB, 5,3 milioni di righe) in 9 s e della versione senza soglia (275 MB,
+22 milioni di righe) in 37 s; statistiche per 139 255 neuroni e 79 neuropili in 11 s (41 s senza soglia),
+solo la prima volta per sessione, con un picco di 0,7 GB di RAM; filtri e creazione di un sottocircuito
+< 1 s. Esempio: classe `olfactory` + `ALPN`, ricerca «DA1», neuropilo `AL_R` → 133 neuroni (ORN, 7 lPN
+colinergici, 1 vPN GABAergico) che nella Sandbox si simulano in circa 1 s.
 
 ---
 
@@ -204,6 +272,9 @@ gli interi diventano float così che `9**9**9` fallisca subito invece di bloccar
 
 ### Connettomi reali
 
+- **Connettoma completo**: carica le tabelle di Codex nella pagina 📁 Dati e crea sottocircuiti
+  dall'esploratore (vedi sopra). Il resto di questa sezione riguarda il preset *📂 Connettoma reale*, che
+  legge un singolo file di archi o interroga i server.
 - **CSV**: scarica `connections.csv` da [FlyWire Codex](https://codex.flywire.ai) (colonne
   `pre_root_id, post_root_id, neuropil, syn_count, nt_type`) oppure esporta da neuPrint. Le righe dei
   diversi neuropili vengono sommate e il segno segue il neurotrasmettitore predetto.
@@ -224,3 +295,8 @@ gli interi diventano float così che `9**9**9` fallisca subito invece di bloccar
   opsine indicative.
 - dTrpA1 e shibire^ts seguono istantaneamente la temperatura (in vivo servono secondi o minuti).
 - La STP è per neurone presinaptico (uguale su tutte le sue sinapsi); niente plasticità a lungo termine (STDP).
+- Un sottocircuito del connettoma è un modello ridotto: le sinapsi con i neuroni esclusi vengono ignorate e
+  i neuromodulatori sono trattati come eccitatori.
+- Passando alla pagina Dati i controlli della Sandbox conservano i loro valori, ma le modifiche fatte a mano
+  nelle tabelle W e gap junction si perdono (Streamlit non permette di ripristinarle): prima esporta
+  l'esperimento in JSON.

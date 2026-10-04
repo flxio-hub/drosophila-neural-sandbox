@@ -13,9 +13,12 @@ from ..config import HHParams, LIFParams, SimParams, STPParams, SynapseParams
 from ..network import PRESETS, Circuit, edges_to_circuit, fetch_flywire_edges, fetch_hemibrain_edges, load_edge_csv
 from ..network.topologies import feedforward_cascade, mushroom_body, random_ei_network
 from . import state
+from .texts import TIPS
 
 CONNECTOME = "📂 Connettoma reale (CSV · FlyWire · Hemibrain)"
 IMPORTED_CIRCUIT = "📥 Circuito importato (JSON)"
+SUBCIRCUIT = "🧭 Sottocircuito dal connettoma"
+SUBCIRCUIT_KEY = "_subcircuit"  # creato nella pagina Dati (esploratore del connettoma)
 EXAMPLE_CSV = Path(__file__).resolve().parents[2] / "data" / "example_mushroom_body.csv"
 
 
@@ -39,6 +42,9 @@ def circuit_controls() -> tuple[Circuit | None, str, list[str]]:
     """Selettore di topologia. Restituisce (circuito, firma per gli editor delle matrici, avvisi)."""
     st.header("🧬 Circuito")
     options = [*PRESETS, CONNECTOME]
+    subcircuit = st.session_state.get(SUBCIRCUIT_KEY)
+    if subcircuit:
+        options.append(SUBCIRCUIT)
     imported = st.session_state.get("_imported_circuit")
     if imported:
         options.append(IMPORTED_CIRCUIT)
@@ -64,6 +70,13 @@ def circuit_controls() -> tuple[Circuit | None, str, list[str]]:
         seed = state.number("Seme della connettività PN → KC", "mb_seed", 0, 10_000, 1)
         return mushroom_body(n_kc=n_kc, seed=seed), signature(preset, n_kc, seed), []
 
+    if preset == SUBCIRCUIT:
+        data = subcircuit
+        circuit = Circuit(name=data["name"], neurons=list(data["neurons"]), weights=np.array(data["weights"]),
+                          description=data.get("description", ""), default_stimuli=data.get("default_stimuli", []))
+        st.caption("Creato nella pagina 📁 Dati: per cambiare neuroni torna all'esploratore del connettoma.")
+        return circuit, signature("subcircuit", data["signature"]), list(data.get("warnings", []))
+
     if preset == IMPORTED_CIRCUIT:
         data = imported
         circuit = Circuit(name=data.get("name", "Circuito importato"), neurons=list(data["neurons"]),
@@ -81,11 +94,9 @@ def circuit_controls() -> tuple[Circuit | None, str, list[str]]:
 def _connectome_controls() -> tuple[Circuit | None, str, list[str]]:
     source = state.radio("Sorgente", "cx_source", ["Esempio incluso (corpo fungo, sintetico)", "File CSV",
                                                   "FlyWire live (CAVEclient)", "Hemibrain live (neuPrint)"])
-    syn_to_nS = state.slider("Conduttanza per sinapsi (nS)", "cx_syn_to_nS", 0.01, 1.0, 0.15, 0.01,
-                             help="Il numero di sinapsi tra due neuroni viene moltiplicato per questo valore.")
+    syn_to_nS = state.slider("Conduttanza per sinapsi (nS)", "cx_syn_to_nS", 0.01, 1.0, 0.15, 0.01)
     c1, c2 = st.columns(2)
-    min_syn = state.number("Soglia sinapsi", "cx_min_syn", 1, 100, 1, where=c1,
-                           help="Scarta connessioni più deboli (FlyWire usa spesso ≥ 5).")
+    min_syn = state.number("Soglia sinapsi", "cx_min_syn", 1, 100, 1, where=c1)
     max_neurons = state.number("Max neuroni", "cx_max_neurons", 2, 150, 60, where=c2)
     opts = dict(syn_to_nS=syn_to_nS, min_synapses=int(min_syn), max_neurons=int(max_neurons))
 
@@ -110,7 +121,7 @@ def _connectome_controls() -> tuple[Circuit | None, str, list[str]]:
         ids_text = state.text("Root ID FlyWire" if is_flywire else "Body ID Hemibrain", "cx_ids", "", area=True,
                               placeholder="720575940… 720575940…" if is_flywire else "5813105172 1071121755")
         token = "" if is_flywire else st.text_input("Token neuPrint", type="password", key="cx_token",
-                                                    help="Dal tuo profilo su neuprint.janelia.org (non viene salvato)")
+                                                    help=TIPS["neuprint_token"])
         if st.button("⬇️ Scarica connettività", width="stretch"):
             ids = _parse_ids(ids_text)
             if len(ids) < 2:
@@ -149,8 +160,7 @@ def model_controls() -> tuple[str, LIFParams, HHParams]:
             tau_m=state.slider("τ_m (ms)", "lif_tau_m", 1.0, 100.0, lif.tau_m, 0.5),
             r_m=state.slider("R_m (GΩ)", "lif_r_m", 0.1, 5.0, lif.r_m, 0.05),
             t_ref=state.slider("Refrattarietà (ms)", "lif_t_ref", 0.0, 10.0, lif.t_ref, 0.1),
-            theta_jump=state.slider("Adattamento soglia Δθ (mV)", "lif_theta_jump", 0.0, 10.0, lif.theta_jump, 0.1,
-                                    help="Aumento della soglia a ogni spike; 0 = LIF classico."),
+            theta_jump=state.slider("Adattamento soglia Δθ (mV)", "lif_theta_jump", 0.0, 10.0, lif.theta_jump, 0.1),
             tau_theta=state.slider("τ_θ (ms)", "lif_tau_theta", 10.0, 1000.0, lif.tau_theta, 5.0),
         )
         rheobase = (lif.v_thresh - lif.v_rest) / lif.r_m
@@ -189,12 +199,11 @@ def synapse_controls(neurons: list[str], sig: str) -> tuple[SynapseParams, STPPa
         enabled = state.toggle("Attiva depressione/facilitazione", "stp_enabled", False)
         stp = STPParams(
             enabled=enabled,
-            U=state.slider("U (frazione di rilascio)", "stp_U", 0.01, 1.0, s.U, 0.01, disabled=not enabled,
-                           help="U alto → forte depressione; U basso con τ_fac > 0 → facilitazione."),
+            U=state.slider("U (frazione di rilascio)", "stp_U", 0.01, 1.0, s.U, 0.01, disabled=not enabled),
             tau_rec=state.slider("τ_rec recupero (ms)", "stp_tau_rec", 10.0, 2000.0, s.tau_rec, 10.0,
                                  disabled=not enabled),
             tau_fac=state.slider("τ_fac facilitazione (ms)", "stp_tau_fac", 0.0, 2000.0, s.tau_fac, 10.0,
-                                 disabled=not enabled, help="0 = solo depressione."),
+                                 disabled=not enabled),
         )
         targets = state.multi("Neuroni presinaptici con STP (vuoto = tutti)", f"{sig}_stp_targets", neurons,
                               disabled=not enabled)
@@ -208,14 +217,12 @@ def simulation_controls(model: str) -> SimParams:
     if model == "lif":
         dt = state.select_slider("dt (ms)", "dt_lif", [0.01, 0.025, 0.05, 0.1, 0.2, 0.5], 0.1)
     else:
-        dt = state.select_slider("dt (ms)", "dt_hh", [0.005, 0.01, 0.025, 0.05], 0.025,
-                                 help="Hodgkin-Huxley richiede passi piccoli per risolvere il potenziale d'azione.")
+        dt = state.select_slider("dt (ms)", "dt_hh", [0.005, 0.01, 0.025, 0.05], 0.025)
     duration = state.slider("Durata (ms)", f"duration_{model}", 50, 3000, 500, 10)
-    seed = state.number("Seme stocastico", "seed", 0, 100_000, 0, help="Rumore e pennacchi d'odore riproducibili.")
+    seed = state.number("Seme stocastico", "seed", 0, 100_000, 0)
     with st.expander("Rumore di membrana di fondo"):
         c1, c2 = st.columns(2)
-        sigma = state.number("σ (pA)", "noise_sigma", 0.0, 100.0, 0.0, 0.5, where=c1,
-                             help="Rumore indipendente su ogni neurone: rende i trial variabili.")
+        sigma = state.number("σ (pA)", "noise_sigma", 0.0, 100.0, 0.0, 0.5, where=c1)
         tau = state.number("τ (ms)", "noise_tau", 0.5, 100.0, 5.0, 0.5, where=c2)
     return SimParams(duration=float(duration), dt=float(dt), seed=int(seed), noise_sigma=float(sigma),
                      noise_tau=float(tau))
@@ -267,7 +274,7 @@ def experiment_box(exp, circuit: Circuit, summary) -> None:
 
         st.download_button("⬇️ Esporta esperimento (JSON)", export, "esperimento_drosophila.json",
                            "application/json", on_click="ignore", width="stretch",
-                           help="Circuito, parametri, stimoli, manipolazioni e riepilogo dei risultati.")
+                           help=TIPS["btn_export"])
         st.file_uploader("Carica un esperimento (.json)", type=["json"], key="import_file", on_change=_on_import)
         st.button("↺ Ripristina i valori di default", on_click=_on_reset, width="stretch")
         st.caption("Il file JSON è leggibile anche da Python: `sandbox.experiment.from_json(...)`.")

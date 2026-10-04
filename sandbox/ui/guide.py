@@ -2,43 +2,8 @@
 
 import streamlit as st
 
-EXPERIMENTS = [
-    ("Cascata feed-forward", "Abbassa il peso da 3 a 2 nS: la trasmissione diventa probabilistica e la frequenza "
-     "si attenua stadio dopo stadio. Con *Esplorazione parametrica* su «W: N1 → N2» trovi la soglia di trasmissione."),
-    ("Feedback inibitorio (lobo antennale)", "Alza l'intensità di S2 (ORN_B): l'LN GABAergico redistribuisce "
-     "l'attività. Applica picrotossina al 100%: PN_B, prima soppresso, torna a rispondere. Attiva la STP sugli ORN "
-     "(depressione ORN → PN): la risposta dei PN diventa più debole e transitoria."),
-    ("Sensorio-motorio: fuga della Giant Fiber", "TTMn segue la GF in ~0,1 ms grazie alle gap junction; bloccale "
-     "(*Manipolazioni* → gap junction 100%, come nei mutanti shakB²) e la risposta rapida scompare. Varia l/v del "
-     "looming: con l/v = 80 ms la GF scatta ~85 ms prima della collisione, con 20 ms appena ~9 ms prima, con "
-     "10 ms troppo tardi."),
-    ("Oscillatore half-center (CPG)", "Con i default i due lati alternano burst di ~150 ms. Porta Δθ a 0: un lato "
-     "silenzia l'altro. Disattiva «Realizzazione indipendente» nel rumore: con input identico i lati si "
-     "sincronizzano. Lo *Spettro di potenza* (scheda Analisi) mostra il ritmo."),
-    ("Rete ricorrente E/I casuale", "Varia |w_I| e il moltiplicatore dei pesi; osserva frequenza media, CV degli ISI "
-     "e sincronia nel PSTH. Con *Trial ripetuti* e rumore di fondo misuri la variabilità della rete."),
-    ("Corpo fungo: codifica sparsa", "Ogni odore attiva solo ~6 cellule di Kenyon su 30, e insiemi quasi disgiunti per "
-     "odori simili. Abla l'APL: le KC attive raddoppiano e la sovrapposizione fra odori aumenta (peggiore "
-     "separazione dei pattern)."),
-    ("Selettività di direzione (T4)", "La barra → attiva solo T4_dx, la barra ← solo T4_sx. Abla CT1_3: T4_dx "
-     "risponde anche alla direzione nulla. Porta l'intervallo fra le colonne da 15 a 30–60 ms in entrambi i canali "
-     "(barre lente): l'inibizione arriva troppo presto e la selettività si perde."),
-]
+from .texts import EXPERIMENTS, TOOLS
 
-TOOLS = [
-    ("Optogenetica", "CsChrimson (E_rev 0 mV) depolarizza, GtACR1 (canale Cl⁻, E_rev −65 mV) inibisce anche per "
-     "shunting. Prova GtACR1 sulla GF durante il looming."),
-    ("Termogenetica", "dTrpA1 attiva i neuroni sopra ~27 °C; shibire^ts blocca il loro rilascio sopra ~29,5 °C. "
-     "Il protocollo di temperatura compare nel grafico ①."),
-    ("Kir2.1 / TNT / ablazione", "Tre modi di togliere un neurone: silenziarlo (Kir2.1: non scarica), renderlo muto "
-     "(TNT: scarica ma non trasmette) o rimuoverlo."),
-    ("Stimolo di Poisson a conduttanza", "Bombardamento sinaptico di fondo: aumenta la conduttanza totale e "
-     "accorcia la costante di tempo efficace (stato ad alta conduttanza)."),
-    ("Rumore gaussiano + STA", "Inietta rumore bianco o OU in un neurone e calcola la spike-triggered average "
-     "(scheda Analisi): ottieni il filtro che il neurone applica all'input."),
-    ("Controllo", "📌 salva il risultato corrente come controllo: frequenze, tracciati e differenze vengono "
-     "confrontati automaticamente."),
-]
 
 
 def guide_panel(model: str) -> None:

@@ -6,6 +6,7 @@ import streamlit as st
 
 from ..network import Circuit
 from . import state
+from .look import explain
 
 
 def _editor(matrix: np.ndarray, neurons: list[str], name: str, step: float) -> np.ndarray:
@@ -20,6 +21,7 @@ def _editor(matrix: np.ndarray, neurons: list[str], name: str, step: float) -> n
 def weight_editor(circuit: Circuit, sig: str) -> tuple[np.ndarray, float]:
     st.caption("Righe = neurone **presinaptico**, colonne = **postsinaptico**. Valori in nS: positivi eccitatori "
                "(ACh), negativi inibitori (GABA/Glu). |W| è la conduttanza di picco evocata da un singolo spike.")
+    explain("weights")
     weights = _editor(circuit.weights, circuit.neurons, f"W_{sig}", 0.1)
     scale = state.slider("Moltiplicatore globale dei pesi chimici", "w_scale", 0.0, 3.0, 1.0, 0.05)
     n_exc, n_inh = int((weights > 0).sum()), int((weights < 0).sum())
@@ -32,6 +34,7 @@ def gap_editor(circuit: Circuit, sig: str) -> tuple[np.ndarray, float]:
     st.caption("Sinapsi elettriche (innexine, es. ShakB) in nS. Sono simmetriche: per ogni coppia vale il valore "
                "più grande fra (i, j) e (j, i). Con il LIF lo spike attraversa la giunzione come "
                "\"spikelet\" (carica = g · (V_picco − V) · durata dello spike).")
+    explain("gap")
     raw = _editor(circuit.gap, circuit.neurons, f"G_{sig}", 0.5)
     gap = np.maximum(np.clip(raw, 0.0, None), np.clip(raw, 0.0, None).T)
     np.fill_diagonal(gap, 0.0)

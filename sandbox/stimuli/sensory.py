@@ -96,25 +96,45 @@ def profile_looming(t, t_collision, l_over_v):
 
 # ----------------------------------------------------------------------------- trasduzione
 
-def _lowpass(x: np.ndarray, dt: float, tau: float) -> np.ndarray:
-    """Filtro passa-basso del primo ordine (IIR esatto), inizializzato a regime sul primo campione."""
-    if tau <= 0:
-        return x.copy()
-    a = np.exp(-dt / tau)
-    y, _ = lfilter([1.0 - a], [1.0, -a], x, zi=[a * x[0]])
-    return y
+class Transducer:
+    """``transduce`` a blocchi: i due filtri conservano lo stato fra una chiamata e l'altra.
+
+    Serve all'anello chiuso, dove il segnale arriva un pezzo alla volta: chiamare il trasduttore
+    su blocchi consecutivi dà lo stesso risultato di ``transduce`` sull'intero segnale
+    (tests/test_stepper.py). Alla prima chiamata i filtri partono a regime sul primo campione.
+    """
+
+    def __init__(self, dt: float, p: TransductionParams):
+        self.p = p
+        self._decay = [np.exp(-dt / tau) if tau > 0 else None for tau in (p.tau_fast, p.tau_slow)]
+        self._state = [None, None]
+
+    def __call__(self, signal: np.ndarray) -> np.ndarray:
+        """Corrente (pA) iniettata nel neurone bersaglio per il blocco di segnale ricevuto."""
+        signal = np.asarray(signal, dtype=float)
+        if signal.size == 0:
+            return signal.copy()
+        p = self.p
+        s = np.clip(signal, 0.0, None)
+        s_n = s ** p.hill_n
+        activation = s_n / (s_n + max(p.half_sat, 1e-9) ** p.hill_n)
+        fast = self._lowpass(activation, 0)
+        slow = self._lowpass(activation, 1)
+        return p.gain_pA * (fast - p.adaptation * slow)
+
+    def _lowpass(self, x: np.ndarray, which: int) -> np.ndarray:
+        """Filtro passa-basso del primo ordine (IIR esatto) con stato conservato."""
+        a = self._decay[which]
+        if a is None:
+            return x.copy()
+        zi = [a * x[0]] if self._state[which] is None else self._state[which]
+        y, self._state[which] = lfilter([1.0 - a], [1.0, -a], x, zi=zi)
+        return y
 
 
 def transduce(signal: np.ndarray, dt: float, p: TransductionParams) -> np.ndarray:
     """Converte il segnale sensoriale in corrente (pA) iniettata nel neurone bersaglio."""
-    if signal.size == 0:
-        return signal.copy()
-    s = np.clip(signal, 0.0, None)
-    s_n = s ** p.hill_n
-    activation = s_n / (s_n + max(p.half_sat, 1e-9) ** p.hill_n)
-    fast = _lowpass(activation, dt, p.tau_fast)
-    slow = _lowpass(activation, dt, p.tau_slow)
-    return p.gain_pA * (fast - p.adaptation * slow)
+    return Transducer(dt, p)(signal)
 
 
 def default_params(modality: str) -> TransductionParams:

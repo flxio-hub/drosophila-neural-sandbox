@@ -4,11 +4,13 @@ import streamlit as st
 
 from ..manipulations import DEFAULT_MANIPULATIONS as D
 from . import state
+from .look import explain
 
 
 def manipulation_panel(neurons: list[str], sig: str) -> dict:
     p = f"{sig}_man"
     st.caption("Confronta sempre con il controllo: premi **📌 Usa come controllo** prima di manipolare.")
+    explain("manipulations")
 
     st.markdown("**Genetiche** · espresse nei neuroni scelti (GAL4/UAS)")
     spec = {
